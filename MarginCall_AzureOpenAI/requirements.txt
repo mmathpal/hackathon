@@ -1,0 +1,12 @@
+openai
+langchain
+langchain-openai
+faiss-cpu
+tiktoken
+python-dotenv
+streamlit
+pandas
+numpy
+fastapi
+uvicorn
+pydantic
