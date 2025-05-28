@@ -1,6 +1,4 @@
-# main.py
-
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
 from forecaster_llm import (
@@ -13,6 +11,7 @@ app = FastAPI()
 
 # Request schema for What-If (single day)
 class WhatIfInput(BaseModel):
+    Client: str
     MTM: float
     Collateral: float
     Threshold: float
@@ -21,6 +20,10 @@ class WhatIfInput(BaseModel):
     Interest_Rate: float
     MTA: float
     Currency: str
+
+# Request schema for Forecast (just pass client name)
+class ForecastInput(BaseModel):
+    Client: str
 
 # Request schema for Ask Anything
 class AskInput(BaseModel):
@@ -39,13 +42,13 @@ def what_if_analysis(input_data: WhatIfInput):
         "MTA": input_data.MTA,
         "Currency": input_data.Currency
     }
-    result = query_llm_what_if_one_day(input_dict)
+    result = query_llm_what_if_one_day(input_dict, client_name=input_data.Client)
     return {"response": result}
 
 # ---------- Endpoint 2: Forecast Using Historical Data ----------
-@app.get("/forecast")
-def forecast_margin_calls():
-    result = query_llm_forecast_from_history()
+@app.post("/forecast")
+def forecast_margin_calls(input_data: ForecastInput):
+    result = query_llm_forecast_from_history(client_name=input_data.Client)
     return {"response": result}
 
 # ---------- Endpoint 3: Ask Anything ----------

@@ -1,5 +1,7 @@
 from dotenv import load_dotenv
 import os
+from datetime import datetime, timedelta
+import json
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.chains import RetrievalQA
@@ -44,26 +46,29 @@ Context:
 Question:
 {question}
 
-Answer:
+Answer (format your answer as JSON):
 """.strip()
 )
 
 # ========== WHAT-IF ANALYSIS ==========
-def query_llm_what_if_one_day(input_data: dict, debug=False):
+def query_llm_what_if_one_day(input_data: dict, client_name: str, debug=False):
     vector_store = load_local_vectorstore()
 
-    # Construct a query that embeds user input as a semantic query
+    today = datetime.today().strftime('%Y-%m-%d')
+
     question = (
+        f"Client: {client_name}\n"
+        f"Date: {today}\n"
         f"Given MTM={input_data['MTM']}, Collateral={input_data['Collateral']}, Threshold={input_data['Threshold']}, "
         f"Volatility={input_data['Volatility']}, FX Rate={input_data['FX Rate']}, Interest Rate={input_data['Interest Rate']}, "
         f"MTA={input_data['MTA']}, Currency={input_data['Currency']}, should a margin call be issued today?\n"
-        f"Margin Call Amount = MTM - Collateral - Threshold (Only if > MTA). Provide explanation."
+        f"Margin Call Amount = MTM - Collateral - Threshold (Only if > MTA). Provide explanation.\n"
+        f"Respond in JSON format with keys: 'Client', 'Date', 'MarginCallRequired', 'MarginCallAmount', 'Comments'."
     )
 
     retriever = vector_store.as_retriever(search_kwargs={"k": 10})
-    
+
     if debug:
-        # Debug: print top matching documents
         docs = retriever.get_relevant_documents(question)
         print("\n=== Retrieved Documents ===")
         for i, doc in enumerate(docs):
@@ -76,32 +81,64 @@ def query_llm_what_if_one_day(input_data: dict, debug=False):
         chain_type_kwargs={"prompt": prompt_template}
     )
 
-    return qa_chain.run(question)
+    response = qa_chain.run(question)
+
+    try:
+        return json.loads(response)
+    except json.JSONDecodeError:
+        return {"error": "Invalid JSON returned by LLM", "raw_output": response}
+
 
 # ========== FORECASTING ==========
-def query_llm_forecast_from_history(debug=False):
+def query_llm_forecast_from_history(client_name: str, debug=False):
     vector_store = load_local_vectorstore()
-    question = """
-Based on historical data, forecast margin calls for the next 3 days (T+1 to T+3).
+
+    today = datetime.today()
+    t_plus_1 = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+    t_plus_2 = (today + timedelta(days=2)).strftime('%Y-%m-%d')
+    t_plus_3 = (today + timedelta(days=3)).strftime('%Y-%m-%d')
+
+    question = f"""
+Client: {client_name}
+Today's Date: {today.strftime('%Y-%m-%d')}
+
+Based on historical data, forecast margin calls for the next 3 days using the following dates:
+- {t_plus_1}
+- {t_plus_2}
+- {t_plus_3}
 
 Instructions:
-1. Estimate if a margin call will be needed on each day.
+1. Estimate if a margin call will be needed on each date.
 2. Use: Margin Call Amount = MTM - Collateral - Threshold
-3. Only issue margin call if result > MTA.
-4. Provide explanations for each day.
+3. Only issue a margin call if the result > MTA.
+4. Provide explanations based on the actual date.
+5. Do NOT use terms like T+1, T+2, T+3 in your explanation.
 
-Output format:
-Day: T+1  
-Margin Call Required: Yes/No  
-Margin Call Amount: $...  
-Comments: ...
-
-Day: T+2  
-...
-
-Day: T+3  
-...
-    """
+Respond in JSON format like this:
+[
+  {{
+    "Client": "{client_name}",
+    "Date": "{t_plus_1}",
+    "MarginCallRequired": "Yes/No",
+    "MarginCallAmount": "$...",
+    "Comments": "Explain based on the date only. Do not refer to T+1, T+2, etc."
+  }},
+  {{
+    "Client": "{client_name}",
+    "Date": "{t_plus_2}",
+    "MarginCallRequired": "Yes/No",
+    "MarginCallAmount": "$...",
+    "Comments": "..."
+  }},
+  {{
+    "Client": "{client_name}",
+    "Date": "{t_plus_3}",
+    "MarginCallRequired": "Yes/No",
+    "MarginCallAmount": "$...",
+    "Comments": "..."
+  }}
+]
+"""
 
     retriever = vector_store.as_retriever(search_kwargs={"k": 20})
 
@@ -118,7 +155,13 @@ Day: T+3
         chain_type_kwargs={"prompt": prompt_template}
     )
 
-    return qa_chain.run(question)
+    response = qa_chain.run(question)
+
+    try:
+        return json.loads(response)
+    except json.JSONDecodeError:
+        return {"error": "Invalid JSON returned by LLM", "raw_output": response}
+
 
 # ========== ASK ANYTHING ==========
 def query_llm_ask_anything(query: str, debug=False):
@@ -132,11 +175,27 @@ def query_llm_ask_anything(query: str, debug=False):
         for i, doc in enumerate(docs):
             print(f"\nDoc {i+1}:\n{doc.page_content}")
 
+    # Use a custom prompt template for plain text answers
+    plain_text_prompt = PromptTemplate(
+        input_variables=["context", "question"],
+        template="""
+Use the following historical context to answer the user's question in plain language.
+
+Context:
+{context}
+
+Question:
+{question}
+
+Answer:
+""".strip()
+    )
+
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
         retriever=retriever,
         return_source_documents=False,
-        chain_type_kwargs={"prompt": prompt_template}
+        chain_type_kwargs={"prompt": plain_text_prompt}
     )
 
     return qa_chain.run(query)
