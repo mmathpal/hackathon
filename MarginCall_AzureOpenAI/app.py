@@ -34,84 +34,80 @@ if view_option == "Forecast":
     st.subheader(f"📋 LLM-Based Forecast for {selected_client} (T+1 to T+3)")
     
     # Call FastAPI /forecast endpoint
-    response = requests.get(f"{API_BASE_URL}/forecast")
+
+    headers = {
+        "Content-Type": "application/json"
+        #"Authorization": "Bearer YOUR_API_KEY"  # If required
+    }
+    data = {
+        "Client": selected_client,
+    }
+
+    response = requests.post(f"{API_BASE_URL}/forecast", json=data, headers=headers)
+    # st.write(response.status_code, response.json())
     result = handle_api_response(response, "Failed to fetch forecast")
-    
+        
     if result:
         st.write("### Raw Forecast Response")  # Debugging
-        st.write(result)
+        st.write(result) ## comment later
+
+        data = response.json()
+        #first_item = data["response"][0]  # Ensure the index refers to the correct element
+        #string_value = first_item.get("Comments", "")  # Access the field containing a string
+
         try:
-            lines = [line.strip() for line in result.split("\n") if line.strip()]  # Remove empty lines
-            data = []
-            i = 0
-            while i < len(lines):
-                if not lines[i].startswith("Day:"):
-                    i += 1
-                    continue
-                day = lines[i].split(":", 1)[1].strip() if ":" in lines[i] else "Unknown"
-                i += 1
-                required = lines[i].split(":", 1)[1].strip() if i < len(lines) and ":" in lines[i] else "Unknown"
-                i += 1
-                amount_str = lines[i].split(":", 1)[1].strip() if i < len(lines) and ":" in lines[i] else "0"
-                amount = float(amount_str.replace("$", "").replace(",", "")) if amount_str.replace("$", "").replace(",", "").replace(".", "").isdigit() else 0.0
-                i += 1
-                comments = lines[i].split(":", 1)[1].strip() if i < len(lines) and ":" in lines[i] else "No comments"
-                i += 1
-                data.append({
-                    "Day": day,
-                    "Margin Call Required": required,
-                    "Margin Call Amount (USD)": amount,
-                    "Comments": comments
-                })
-            if not data:
-                st.warning("No valid forecast data found in response.")
-            else:
-                # Display DataFrame
-                df = pd.DataFrame(data)
-                st.dataframe(df, use_container_width=True)
-                
-                # Download button
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    label="Download Forecast Data as CSV",
-                    data=csv,
-                    file_name="forecast_margin_calls.csv",
-                    mime="text/csv"
-                )
-                
-                # Chart.js visualization
-                st.write("### Forecast Chart")
-                chart_data = {
-                    "type": "line",
-                    "data": {
-                        "labels": df["Day"].tolist(),
-                        "datasets": [{
-                            "label": "Forecasted Margin Call (USD)",
-                            "data": df["Margin Call Amount (USD)"].tolist(),
-                            "borderColor": "#3498db",
-                            "backgroundColor": "rgba(52, 152, 219, 0.2)",
-                            "fill": True,
-                            "tension": 0.4
-                        }]
+            df = pd.DataFrame(data["response"])
+            df = df[["Date", "MarginCallRequired", "MarginCallAmount","Comments"]]
+            # Rename columns
+            df = df.rename(columns={
+                "Date": "Margin Call Date",
+                "MarginCallRequired": "Margin Call Required?",
+                "MarginCallAmount": "Margin Call Amount (USD)"
+            })
+            st.dataframe(df, use_container_width=True)
+            
+            # Download button
+            csv = df.to_csv(index=False)
+            st.download_button(
+                label="Download Forecast Data as CSV",
+                data=csv,
+                file_name="forecast_margin_calls.csv",
+                mime="text/csv"
+            )
+            
+            # Chart.js visualization
+            st.write("### Forecast Chart")
+            chart_data = {
+                "type": "line",
+                "data": {
+                    "labels": df["Margin Call Date"].tolist(),
+                    "datasets": [{
+                        "label": "Forecasted Margin Call (USD)",
+                        "data": df["Margin Call Amount (USD)"].tolist(),
+                        "borderColor": "#3498db",
+                        "backgroundColor": "rgba(52, 152, 219, 0.2)",
+                        "fill": True,
+                        "tension": 0.4
+                    }]
+                },
+                "options": {
+                    "scales": {
+                        "x": {"title": {"display": True, "text": "Date"}},
+                        "y": {"title": {"display": True, "text": "Margin Call Amount (USD)"}, "beginAtZero": False}
                     },
-                    "options": {
-                        "scales": {
-                            "x": {"title": {"display": True, "text": "Day"}},
-                            "y": {"title": {"display": True, "text": "Margin Call Amount (USD)"}, "beginAtZero": False}
-                        },
-                        "plugins": {
-                            "title": {"display": True, "text": f"Margin Call Forecast for {selected_client} (T+1 to T+3)"}
-                        }
+                    "plugins": {
+                        "title": {"display": True, "text": f"Margin Call Forecast for {selected_client} (T+1 to T+3)"}
                     }
                 }
-                st.components.v1.html(f"""
-                    <canvas id="forecastChart"></canvas>
-                    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-                    <script>
-                        new Chart(document.getElementById('forecastChart'), {json.dumps(chart_data)});
-                    </script>
-                """, height=400)
-                
+            }
+            st.components.v1.html(f"""
+                <canvas id="forecastChart"></canvas>
+                <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+                <script>
+                    new Chart(document.getElementById('forecastChart'), {json.dumps(chart_data)});
+                </script>
+            """, height=400)
+            
         except Exception as e:
             st.error(f"Error parsing forecast response: {str(e)}")
             st.write("Please check the LLM response format.")

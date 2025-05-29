@@ -10,3 +10,5 @@ numpy
 fastapi
 uvicorn
 pydantic
+langchain-community
+langchain-core
