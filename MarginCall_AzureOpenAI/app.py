@@ -140,13 +140,13 @@ elif view_option == "What-If Scenario":
     
     with left_col:
         st.subheader("🔧 Adjust Parameters")
-        volatility = st.slider("Market Volatility (VIX)", 0, 50, 0)
+        volatility = st.slider("Market Volatility (VIX)", 0, 50, 10)
         #fx_rate = st.slider("FX Rate (e.g., EUR/USD)", 0.9, 1.5, 1.1)
-        interest_rate = st.slider("Interest Rate (%)", 0.0, 10.0, 0.0, step=0.1)
-        threshold = st.slider("Threshold (USD)", 0, 2_000_000, 0, step=50_000)
-        collateral = st.slider("Collateral Posted (USD)", 0, 5_000_000, 0, step=100_000)
-        mtm = st.slider("MTM (USD)", -5_000_000, 5_000_000, 0, step=100_000)
-        mta = st.slider("MTA (USD)", 0, 50_000_000, 0, step=100_000)
+        interest_rate = st.slider("Interest Rate (%)", 0.0, 10.0, 3.0, step=0.1)
+        threshold = st.slider("Threshold (USD)", 0, 2_000_000, 700000, step=50_000)
+        collateral = st.slider("Collateral Posted (USD)", 0, 5_000_000, 900000, step=100_000)
+        mtm = st.slider("MTM (USD)", 0, 5_000_000, 100000, step=100_000)
+        mta = st.slider("MTA (USD)", 0, 50_000_000, 300000, step=100_000)
     
     with right_col:
         st.subheader("📋 What-If Scenario: LLM-Based Analysis")
