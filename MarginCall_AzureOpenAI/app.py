@@ -48,8 +48,8 @@ if view_option == "Forecast":
     result = handle_api_response(response, "Failed to fetch forecast")
         
     if result:
-        st.write("### Raw Forecast Response")  # Debugging
-        st.write(result) ## comment later
+        #st.write("### Raw Forecast Response")  # Debugging
+        #st.write(result) ## comment later
 
         data = response.json()
         #first_item = data["response"][0]  # Ensure the index refers to the correct element
@@ -64,8 +64,30 @@ if view_option == "Forecast":
                 "MarginCallRequired": "Margin Call Required?",
                 "MarginCallAmount": "Margin Call Amount (USD)"
             })
-            st.dataframe(df, use_container_width=True)
+            #st.dataframe(df, use_container_width=True, hide_index=True)
+            #st.dataframe(df.style.set_properties(**{'text-align': 'left', 'word-wrap': 'break-word'}), hide_index=True)
             
+            st.markdown("""
+                <style>
+                    table {
+                        border-collapse: collapse;
+                        width: 100%;
+                    }
+                    th {
+                        background-color: #4CAF50;
+                        color: white;
+                        font-weight: bold;
+                        padding: 8px;
+                    }
+                    td {
+                        padding: 8px;
+                        text-align: left;
+                    }
+                    tr:nth-child(even) {background-color: #f2f2f2;}
+                </style>
+            """, unsafe_allow_html=True)
+            st.markdown(df.to_html(index=False), unsafe_allow_html=True)
+                
             # Download button
             csv = df.to_csv(index=False)
             st.download_button(
@@ -118,49 +140,70 @@ elif view_option == "What-If Scenario":
     
     with left_col:
         st.subheader("🔧 Adjust Parameters")
-        volatility = st.slider("Market Volatility (VIX)", 10, 50, 25)
-        fx_rate = st.slider("FX Rate (e.g., EUR/USD)", 0.9, 1.5, 1.1)
-        interest_rate = st.slider("Interest Rate (%)", 0.0, 10.0, 5.0, step=0.1)
-        threshold = st.slider("Threshold (USD)", 0, 2_000_000, 500_000, step=50_000)
-        collateral = st.slider("Collateral Posted (USD)", 0, 5_000_000, 2_000_000, step=100_000)
+        volatility = st.slider("Market Volatility (VIX)", 0, 50, 0)
+        #fx_rate = st.slider("FX Rate (e.g., EUR/USD)", 0.9, 1.5, 1.1)
+        interest_rate = st.slider("Interest Rate (%)", 0.0, 10.0, 0.0, step=0.1)
+        threshold = st.slider("Threshold (USD)", 0, 2_000_000, 0, step=50_000)
+        collateral = st.slider("Collateral Posted (USD)", 0, 5_000_000, 0, step=100_000)
         mtm = st.slider("MTM (USD)", -5_000_000, 5_000_000, 0, step=100_000)
+        mta = st.slider("MTA (USD)", 0, 50_000_000, 0, step=100_000)
     
     with right_col:
         st.subheader("📋 What-If Scenario: LLM-Based Analysis")
         input_data = {
+            "Client": selected_client,
             "MTM": mtm,
             "Collateral": collateral,
             "Threshold": threshold,
             "Volatility": volatility,
-            "FX_Rate": fx_rate,
+            "FX_Rate": 0,
             "Interest_Rate": interest_rate,
-            "MTA": 100000,  # Fixed MTA for simplicity
+            "MTA": mta, 
             "Currency": "USD"
         }
         
+        headers = {
+        "Content-Type": "application/json"
+        #"Authorization": "Bearer YOUR_API_KEY"  # If required
+        }
+
         # Call FastAPI /what-if endpoint
-        response = requests.post(f"{API_BASE_URL}/what-if", json=input_data)
+        response = requests.post(f"{API_BASE_URL}/what-if", json=input_data,headers=headers)
         result = handle_api_response(response, "Failed to fetch what-if analysis")
         
         if result:
-            st.write("### Raw What-If Response")  # Debugging
-            st.write(result)
+            #st.write("### Raw What-If Response")  # Debugging
+            #data = response.json()
+            #st.write(data)
             try:
-                lines = [line.strip() for line in result.split("\n") if line.strip()]
-                required = lines[0].split(":", 1)[1].strip() if ":" in lines[0] else "Unknown"
-                amount_str = lines[1].split(":", 1)[1].strip() if len(lines) > 1 and ":" in lines[1] else "0"
-                amount = float(amount_str.replace("$", "").replace(",", "")) if amount_str.replace("$", "").replace(",", "").replace(".", "").isdigit() else 0.0
-                explanation = lines[2].split(":", 1)[1].strip() if len(lines) > 2 and ":" in lines[2] else "No explanation"
+                marginCallAmount = result.get("MarginCallAmount", "")  
+                # Convert JSON to DataFrame
+                df = pd.DataFrame([result])  # Wrap in a list to avoid scalar errors
+                df = df[["Date", "MarginCallRequired", "MarginCallAmount", "Comments"]]
+                # # Rename columns
+                # df = df.rename(columns={
+                #     "Date": "Margin Call Date",
+                #     "MarginCallRequired": "Margin Call Required?",
+                #     "MarginCallAmount": "Margin Call Amount (USD)",
+                #     "Comments":"Explanation"
+                # })
+                # # Use st.table for better word wrapping on text fields
+                # st.table(df.style.set_properties(**{'text-align': 'left', 'word-wrap': 'break-word'}))
                 
-                # Display DataFrame
-                df = pd.DataFrame([{
-                    "Date": datetime.today().strftime('%Y-%m-%d'),
-                    "Margin Call Required": required,
-                    "Margin Call Amount (USD)": amount,
-                    "Explanation": explanation
-                }])
-                st.dataframe(df, use_container_width=True)
+                # st.markdown(f"""
+                # 📅 **Date:** {result["Date"]}  
+                # ✅ **Margin Call Required?** {result["MarginCallRequired"]}  
+                # 💰 **Margin Call Amount (USD):** {result["MarginCallAmount"]}  
+                # 📝 **Details:** {result["Comments"]}
+                # """)
                 
+                #Expandable Sections
+                with st.expander("Margin Call Details", True):
+                    st.write(f"📅 **Date:** {result['Date']}")
+                    st.write(f"✅ **Margin Call Required?** {result['MarginCallRequired']}")
+                    st.write(f"💰 **Margin Call Amount (USD):** {result['MarginCallAmount']}")
+                    st.write(f"📝 **Details:** {result['Comments']}")
+
                 # Download button
                 csv = df.to_csv(index=False)
                 st.download_button(
@@ -178,7 +221,7 @@ elif view_option == "What-If Scenario":
                         "labels": [datetime.today().strftime('%Y-%m-%d')],
                         "datasets": [{
                             "label": "What-If Margin Call (USD)",
-                            "data": [amount],
+                            "data": [marginCallAmount],
                             "backgroundColor": "rgba(231, 76, 60, 0.5)",
                             "borderColor": "#e74c3c",
                             "borderWidth": 1
