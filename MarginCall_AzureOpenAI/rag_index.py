@@ -23,7 +23,7 @@ def prepare_documents(df):
     return docs
 
 def build_vectorstore():
-    df = load_data("margin_call_training_data_1000.csv")
+    df = load_data("MarginCallData.csv")
     docs = prepare_documents(df)
 
     embedding_model = AzureOpenAIEmbeddings(
