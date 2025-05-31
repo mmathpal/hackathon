@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta
 import json
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 
@@ -18,7 +18,8 @@ llm = AzureChatOpenAI(
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_version=os.getenv("AZURE_OPENAI_CHAT_API_VERSION"),
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    temperature=0  # Zero temp for more consistent answers
+    temperature=0, # Zero temp for more consistent answers
+    top_p=0
 )
 
 # Embedding model for vector store

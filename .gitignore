@@ -1,0 +1,9 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/MarginCall_AzureOpenAI/.vs
+/MarginCall_AzureOpenAI/.env
+/MarginCall_AzureOpenAI/env
+/MarginCall_AzureOpenAI/__pycache__
+/MarginCall_AzureOpenAI/faiss_index
