@@ -25,7 +25,7 @@ st.title("📊 Margin Call Forecaster")
 
 # Sidebar for client and view selection
 with st.sidebar:
-    clients = ['Client A', 'Client B', 'Client C']
+    clients = ['ClientA', 'ClientB', 'ClientC', 'ClientD', 'ClientE', 'ClientF' ]
     selected_client = st.selectbox("Select Client", clients)
     view_option = st.radio("Select View", ["Forecast", "What-If Scenario", "Ask Anything"])
 
@@ -143,23 +143,17 @@ elif view_option == "What-If Scenario":
         volatility = st.slider("Market Volatility (VIX)", 0, 50, 0)
         #fx_rate = st.slider("FX Rate (e.g., EUR/USD)", 0.9, 1.5, 1.1)
         interest_rate = st.slider("Interest Rate (%)", 0.0, 10.0, 0.0, step=0.1)
-        threshold = st.slider("Threshold (USD)", 0, 2_000_000, 0, step=50_000)
-        collateral = st.slider("Collateral Posted (USD)", 0, 5_000_000, 0, step=100_000)
-        mtm = st.slider("MTM (USD)", -5_000_000, 5_000_000, 0, step=100_000)
-        mta = st.slider("MTA (USD)", 0, 50_000_000, 0, step=100_000)
+        #threshold = st.slider("Threshold (USD)", 0, 2_000_000, 0, step=50_000)
+        #collateral = st.slider("Collateral Posted (USD)", 0, 5_000_000, 0, step=100_000)
+        #mtm = st.slider("MTM (USD)", -5_000_000, 5_000_000, 0, step=100_000)
+        #mta = st.slider("MTA (USD)", 0, 50_000_000, 0, step=100_000)
     
     with right_col:
         st.subheader("📋 What-If Scenario: LLM-Based Analysis")
         input_data = {
-            "Client": selected_client,
-            "MTM": mtm,
-            "Collateral": collateral,
-            "Threshold": threshold,
+            "Client": selected_client,            
             "Volatility": volatility,
-            "FX_Rate": 0,
-            "Interest_Rate": interest_rate,
-            "MTA": mta, 
-            "Currency": "USD"
+            "Interest_Rate": interest_rate
         }
         
         headers = {
