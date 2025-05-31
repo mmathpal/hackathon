@@ -1,3 +1,5 @@
+# forecaster_llm.py
+
 from dotenv import load_dotenv
 import os
 from datetime import datetime, timedelta
@@ -7,6 +9,7 @@ from langchain.vectorstores import FAISS
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 
+# Load environment variables
 load_dotenv()
 
 # Initialize LLM
@@ -15,10 +18,10 @@ llm = AzureChatOpenAI(
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_version=os.getenv("AZURE_OPENAI_CHAT_API_VERSION"),
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    temperature=0
+    temperature=0  # Zero temp for more consistent answers
 )
 
-# Embedding model
+# Embedding model for vector store
 embedding_model = AzureOpenAIEmbeddings(
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
@@ -34,7 +37,7 @@ def load_local_vectorstore():
         allow_dangerous_deserialization=True
     )
 
-# Prompt Template
+# Prompt Template for retrieval-augmented generation (RAG)
 prompt_template = PromptTemplate(
     input_variables=["context", "question"],
     template="""
@@ -50,16 +53,22 @@ Answer (format your answer as JSON):
 """.strip()
 )
 
-# ========== WHAT-IF ANALYSIS ==========
+# ========== WHAT-IF ANALYSIS FOR ONE DAY ==========
 def query_llm_what_if_one_day(input_data: dict, client_name: str, debug=False):
     vector_store = load_local_vectorstore()
 
     question = (
         f"Client: {client_name}\n"
         f"Given Volatility={input_data['Volatility']}, Interest Rate={input_data['Interest Rate']}, should a margin call be issued today?\n"
-        f"Margin Call Amount = MTM - Collateral - Threshold (Only if > MTA). Provide explanation.\n"
-        f"Respond in JSON format with keys: 'Client', 'Date', 'MarginCallRequired', 'MarginCallAmount', 'Comments'."
-        f"The Comments should briefly explain whether a margin call is required without referring to the calculation formula."
+        f"Margin Call Amount = MTM - Collateral - Threshold (Only if > MTA).\n"
+        f"Provide explanation.\n\n"
+        f"Respond in JSON format with these keys:\n"
+        f"- 'Client'\n"
+        f"- 'Date'\n"
+        f"- 'MarginCallRequired'\n"
+        f"- 'MarginCallAmount'\n"
+        f"- 'ConfidenceScore' (between 0% and 100%)\n"
+        f"- 'Comments' (brief explanation)"
     )
 
     retriever = vector_store.as_retriever(search_kwargs={"k": 10})
@@ -85,7 +94,7 @@ def query_llm_what_if_one_day(input_data: dict, client_name: str, debug=False):
         return {"error": "Invalid JSON returned by LLM", "raw_output": response}
 
 
-# ========== FORECASTING ==========
+# ========== FORECASTING FOR NEXT 3 DAYS ==========
 def query_llm_forecast_from_history(client_name: str, debug=False):
     vector_store = load_local_vectorstore()
 
@@ -98,43 +107,40 @@ def query_llm_forecast_from_history(client_name: str, debug=False):
 Client: {client_name}
 Today's Date: {today.strftime('%Y-%m-%d')}
 
-Based on historical data, forecast margin calls for the next 3 days using the following dates:
+Based on historical data, forecast margin calls for the next 3 days:
 - {t_plus_1}
 - {t_plus_2}
 - {t_plus_3}
 
 Instructions:
-1. Estimate if a margin call will be needed on each date.
+1. For each date, determine if a margin call will be needed.
 2. Use: Margin Call Amount = MTM - Collateral - Threshold
 3. Only issue a margin call if the result > MTA.
-4. Provide explanations based on the actual date.
-5. Do NOT use terms like T+1, T+2, T+3 in your explanation.
+4. Estimate your confidence score (0%-100%) for each prediction.
+5. Provide an explanation.
 
-Respond in JSON format like this:
+Respond in JSON array format like:
 [
   {{
     "Client": "{client_name}",
     "Date": "{t_plus_1}",
     "MarginCallRequired": "Yes/No",
     "MarginCallAmount": "$...",
-    "Comments": "Explain based on the date only. Do not refer to T+1, T+2, etc."
+    "ConfidenceScore": "90%",
+    "Comments": "Brief explanation without using T+1 terminology."
   }},
   {{
     "Client": "{client_name}",
     "Date": "{t_plus_2}",
-    "MarginCallRequired": "Yes/No",
-    "MarginCallAmount": "$...",
-    "Comments": "..."
+    ...
   }},
   {{
     "Client": "{client_name}",
     "Date": "{t_plus_3}",
-    "MarginCallRequired": "Yes/No",
-    "MarginCallAmount": "$...",
-    "Comments": "..."
+    ...
   }}
 ]
-"""
+""".strip()
 
     retriever = vector_store.as_retriever(search_kwargs={"k": 20})
 
@@ -171,7 +177,6 @@ def query_llm_ask_anything(query: str, debug=False):
         for i, doc in enumerate(docs):
             print(f"\nDoc {i+1}:\n{doc.page_content}")
 
-    # Use a custom prompt template for plain text answers
     plain_text_prompt = PromptTemplate(
         input_variables=["context", "question"],
         template="""
