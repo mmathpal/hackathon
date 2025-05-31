@@ -54,16 +54,12 @@ Answer (format your answer as JSON):
 def query_llm_what_if_one_day(input_data: dict, client_name: str, debug=False):
     vector_store = load_local_vectorstore()
 
-    today = datetime.today().strftime('%Y-%m-%d')
-
     question = (
         f"Client: {client_name}\n"
-        f"Date: {today}\n"
-        f"Given MTM={input_data['MTM']}, Collateral={input_data['Collateral']}, Threshold={input_data['Threshold']}, "
-        f"Volatility={input_data['Volatility']}, FX Rate={input_data['FX Rate']}, Interest Rate={input_data['Interest Rate']}, "
-        f"MTA={input_data['MTA']}, Currency={input_data['Currency']}, should a margin call be issued today?\n"
+        f"Given Volatility={input_data['Volatility']}, Interest Rate={input_data['Interest Rate']}, should a margin call be issued today?\n"
         f"Margin Call Amount = MTM - Collateral - Threshold (Only if > MTA). Provide explanation.\n"
         f"Respond in JSON format with keys: 'Client', 'Date', 'MarginCallRequired', 'MarginCallAmount', 'Comments'."
+        f"The Comments should briefly explain whether a margin call is required without referring to the calculation formula."
     )
 
     retriever = vector_store.as_retriever(search_kwargs={"k": 10})
