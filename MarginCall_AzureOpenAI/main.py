@@ -12,14 +12,9 @@ app = FastAPI()
 # Request schema for What-If (single day)
 class WhatIfInput(BaseModel):
     Client: str
-    MTM: float
-    Collateral: float
-    Threshold: float
-    Volatility: float
-    FX_Rate: float
+    Volatility: float    
     Interest_Rate: float
-    MTA: float
-    Currency: str
+    
 
 # Request schema for Forecast (just pass client name)
 class ForecastInput(BaseModel):
@@ -33,14 +28,9 @@ class AskInput(BaseModel):
 @app.post("/what-if")
 def what_if_analysis(input_data: WhatIfInput):
     input_dict = {
-        "MTM": input_data.MTM,
-        "Collateral": input_data.Collateral,
-        "Threshold": input_data.Threshold,
-        "Volatility": input_data.Volatility,
-        "FX Rate": input_data.FX_Rate,
-        "Interest Rate": input_data.Interest_Rate,
-        "MTA": input_data.MTA,
-        "Currency": input_data.Currency
+        "Client": input_data.Client,
+        "Volatility": input_data.Volatility,        
+        "Interest Rate": input_data.Interest_Rate        
     }
     result = query_llm_what_if_one_day(input_dict, client_name=input_data.Client)
     return {"response": result}
