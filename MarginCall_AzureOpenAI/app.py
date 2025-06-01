@@ -33,14 +33,14 @@ with st.sidebar:
     st.markdown(
         """
         <div style='color: gray; text-align: center; font-size: 14px;'>
-        ⚡ Powered by: <b>LLM</b> | <b>RAG</b> | <b>VectorDB</b> | <b>Azure OpenAI</b>
+        ⚡ Powered by: <b>Agentic AI<b> | <b>LLM</b> | <b>RAG</b> | <b>LSTM</b> | <b>LightGBM</b> | <b>Azure OpenAI</b>
         </div>
         """, unsafe_allow_html=True
     )
 
 # Forecast View
 if view_option == "📈 Forecast":
-    st.subheader(f"📋 LLM-Based Forecast for {selected_client} (T+1 to T+3)")
+    st.subheader(f"📋 Forecast for {selected_client} (T+1 to T+3)")
 
     headers = {"Content-Type": "application/json"}
     data = {"Client": selected_client}
@@ -73,33 +73,51 @@ if view_option == "📈 Forecast":
                     mime="text/csv"
                 )
 
-            # Display table with styling
+            # Display table with better centered header styling
             st.markdown(
                 """
                 <style>
                 table {
                     width: 100%;
                     table-layout: fixed;
+                    border-collapse: collapse;
                 }
-                th {
+                thead tr th {
                     background-color: #0D6EFD;
                     color: white;
-                    text-align: center;
-                    padding: 10px;
+                    text-align: center !important; /* Force center header */
+                    padding: 12px 8px;
+                    font-size: 16px;
+                    border: 1px solid #ddd;
+                    vertical-align: middle;
                 }
-                td {
-                    text-align: left;
-                    padding: 8px;
+                tbody tr td {
+                    text-align: left !important; /* Left align data */
+                    padding: 10px 8px;
                     white-space: normal !important;
                     word-wrap: break-word !important;
-                    max-width: 250px;
+                    border: 1px solid #ddd;
+                    font-size: 14px;
+                    vertical-align: top;
+                }
+                /* Specific Column Widths */
+                th:nth-child(1), td:nth-child(1) { width: 120px; }   /* Date */
+                th:nth-child(2), td:nth-child(2) { width: 160px; }   /* Margin Call Required */
+                th:nth-child(3), td:nth-child(3) { width: 150px; }   /* Margin Call Amount */
+                th:nth-child(4), td:nth-child(4) { width: 120px; }   /* Confidence Score */
+                th:nth-child(5), td:nth-child(5) { width: 600px; }   /* Explanation - wider */
+                
+                tr:hover {
+                    background-color: #f1f1f1;
                 }
                 </style>
                 """, unsafe_allow_html=True
             )
+
+            # Render the table
             st.markdown(df.to_html(index=False, escape=False), unsafe_allow_html=True)
 
-            # Plotly Combined Line Chart
+            # Combined Line Chart
             fig = go.Figure()
 
             fig.add_trace(go.Scatter(
@@ -145,6 +163,9 @@ elif view_option == "🔧 What-If Scenario":
 
     with left_col:
         st.subheader("🔧 Adjust Parameters")
+        mtm = st.slider("MTM (USD)", min_value=0, max_value=3_0_000_00, value=400000, step=10_000)
+        collateral = st.slider("Collateral (USD)", min_value=0, max_value=5_000_00, value=100000, step=10_000)
+        threshold = st.slider("Threshold (USD)", min_value=0, max_value=4_00_000, value=30000, step=10_000)        
         volatility = st.slider("Market Volatility (VIX)", 0, 50, 20)
         interest_rate = st.slider("Interest Rate (%)", 0.0, 10.0, 2.5, step=0.1)
 
@@ -152,8 +173,13 @@ elif view_option == "🔧 What-If Scenario":
         st.subheader(f"📋 What-If Scenario: LLM-Based Analysis for {selected_client}")
         input_data = {
             "Client": selected_client,
+            "MTM": mtm,
+            "Collateral": collateral,
+            "Threshold": threshold,
             "Volatility": volatility,
-            "Interest_Rate": interest_rate
+            "InterestRate": interest_rate,
+            "MTA": 1000,
+            "Currency": "USD"
         }
 
         headers = {"Content-Type": "application/json"}
@@ -172,7 +198,8 @@ elif view_option == "🔧 What-If Scenario":
 
                 with st.expander("📋 Margin Call Details", expanded=True):
                     st.write(f"📅 **Date:** {result['Date']}")
-                    st.write(f"✅ **Margin Call Required?** {result['MarginCallRequired']}")
+                    margin_call_icon = "✅" if result['MarginCallRequired'].lower() == "yes" else "❌"
+                    st.write(f"{margin_call_icon} **Margin Call Required?** {result['MarginCallRequired']}")
                     st.write(f"💰 **Margin Call Amount (USD):** {result['MarginCallAmount']}")
                     st.write(f"📈 **Confidence Score:** {result['ConfidenceScore']}")
                     st.write(f"📝 **Details:** {result['Comments']}")
@@ -181,7 +208,7 @@ elif view_option == "🔧 What-If Scenario":
                 fig = go.Figure()
 
                 fig.add_trace(go.Scatter(
-                    x=["Scenario"],  # Single label
+                    x=["Scenario"],
                     y=[margin_call_amount],
                     mode="lines+markers",
                     name="Margin Call Amount (USD)",
@@ -201,7 +228,7 @@ elif view_option == "🔧 What-If Scenario":
 
                 fig.update_layout(
                     title=f"📈 What-If Analysis for {selected_client}",
-                    xaxis=dict(title=""),  # No time/date
+                    xaxis=dict(title=""),
                     yaxis=dict(title="Margin Call Amount (USD)", side="left", rangemode="tozero"),
                     yaxis2=dict(title="Confidence Score (%)", overlaying="y", side="right", rangemode="tozero"),
                     template="plotly_white",

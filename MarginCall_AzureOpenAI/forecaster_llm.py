@@ -1,27 +1,28 @@
-# forecaster_llm.py
-
-from dotenv import load_dotenv
 import os
+import re
 from datetime import datetime, timedelta
-import json
+import numpy as np
+import pandas as pd
+import torch
+import joblib
+from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
+from torch import nn
 
-# Load environment variables
 load_dotenv()
 
-# Initialize LLM
+# Initialize LLM (Azure OpenAI GPT-3.5 Turbo)
 llm = AzureChatOpenAI(
     azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_version=os.getenv("AZURE_OPENAI_CHAT_API_VERSION"),
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    temperature=0  # Zero temp for more consistent answers
+    temperature=0
 )
 
-# Embedding model for vector store
+# Embedding model
 embedding_model = AzureOpenAIEmbeddings(
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
@@ -37,166 +38,210 @@ def load_local_vectorstore():
         allow_dangerous_deserialization=True
     )
 
-# Prompt Template for retrieval-augmented generation (RAG)
-prompt_template = PromptTemplate(
-    input_variables=["context", "question"],
-    template="""
-Use the following historical context to help answer the user's question.
+# Load Models and Encoders
+lightgbm_model = joblib.load("margin_call_lightgbm_model.joblib")
+client_encoder = joblib.load("client_label_encoder.joblib")
 
-Context:
-{context}
+class MarginCallLSTM(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers=1):
+        super(MarginCallLSTM, self).__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, 1)
+        self.sigmoid = nn.Sigmoid()
 
-Question:
-{question}
+    def forward(self, x):
+        h0 = torch.zeros(1, x.size(0), 64)
+        c0 = torch.zeros(1, x.size(0), 64)
+        out, _ = self.lstm(x, (h0, c0))
+        out = self.fc(out[:, -1, :])
+        return self.sigmoid(out)
 
-Answer (format your answer as JSON):
-""".strip()
-)
+lstm_model = MarginCallLSTM(7, 64)
+lstm_model.load_state_dict(torch.load("margin_call_lstm_model.pth"))
+lstm_model.eval()
 
-# ========== WHAT-IF ANALYSIS FOR ONE DAY ==========
-def query_llm_what_if_one_day(input_data: dict, client_name: str, debug=False):
+scaler = joblib.load("lstm_scaler.joblib")
+historical_df = pd.read_csv("MarginCallData.csv")
+historical_df["Client_Encoded"] = client_encoder.transform(historical_df["Client"])
+
+features = ["Client_Encoded", "MTM", "Collateral", "Threshold", "Volatility", "InterestRate", "MTA"]
+
+# ---------- Prediction Functions ----------
+def predict_with_lightgbm(input_data):
+    client_encoded = client_encoder.transform([input_data["Client"]])[0]
+    input_features = [
+        client_encoded,
+        input_data["MTM"],
+        input_data["Collateral"],
+        input_data["Threshold"],
+        input_data["Volatility"],
+        input_data["InterestRate"],
+        input_data["MTA"]
+    ]
+    input_array = np.array([input_features])
+    probability = lightgbm_model.predict(input_array)[0]
+    return probability
+
+def predict_with_lstm(input_data):
+    client_encoded = client_encoder.transform([input_data["Client"]])[0]
+    input_features = [
+        client_encoded,
+        input_data["MTM"],
+        input_data["Collateral"],
+        input_data["Threshold"],
+        input_data["Volatility"],
+        input_data["InterestRate"],
+        input_data["MTA"]
+    ]
+    input_array = np.array([input_features])
+    input_array_scaled = scaler.transform(input_array.reshape(1, -1))
+    input_tensor = torch.tensor(input_array_scaled, dtype=torch.float32).unsqueeze(0)
+    probability = lstm_model(input_tensor).detach().numpy()[0][0]
+    return probability
+
+def hybrid_predict_margin_call(input_data):
+    prob_lgbm = predict_with_lightgbm(input_data)
+    prob_lstm = predict_with_lstm(input_data)
+
+    avg_prob = (prob_lgbm + prob_lstm) / 2
+    margin_call_required = "Yes" if avg_prob > 0.5 else "No"
+    confidence_score = round(avg_prob * 100, 2)
+    margin_call_amount = max(round(input_data["MTM"] - input_data["Collateral"] - input_data["Threshold"], 2), 0)
+
+    return margin_call_required, f"${margin_call_amount:,.2f}", f"{confidence_score:.2f}%"
+
+def clean_comments(text):
+    return re.sub(r'\s+', ' ', text).strip()
+
+# ---------- Input Generator ----------
+def generate_dynamic_inputs(historical_df, n_days=3, client_name=None):
+    if client_name:
+        np.random.seed(abs(hash(client_name)) % (2**32))
+
+    stats = {}
+    for feature in ["MTM", "Collateral", "Threshold", "Volatility", "InterestRate", "MTA"]:
+        stats[feature] = {
+            "mean": historical_df[feature].mean(),
+            "std": historical_df[feature].std()
+        }
+
+    inputs = []
+    for _ in range(n_days):
+        sample = {}
+        for feature in ["MTM", "Collateral", "Threshold", "Volatility", "InterestRate", "MTA"]:
+            sampled_value = np.random.normal(
+                loc=stats[feature]["mean"],
+                scale=stats[feature]["std"]
+            )
+            if feature in ["MTM", "Collateral", "Threshold"]:
+                sampled_value = round(sampled_value)
+            else:
+                sampled_value = round(sampled_value, 2)
+            sample[feature] = sampled_value
+
+        if client_name:
+            sample["Client"] = client_name
+
+        inputs.append(sample)
+
+    return inputs
+
+# ---------- What-If Analysis ----------
+def hybrid_what_if_one_day(input_data: dict, client_name: str):
+    margin_call_required, margin_call_amount, confidence_score = hybrid_predict_margin_call(input_data)
+
     vector_store = load_local_vectorstore()
-
-    question = (
-        f"Client: {client_name}\n"
-        f"Given Volatility={input_data['Volatility']}, Interest Rate={input_data['Interest Rate']}, should a margin call be issued today?\n"
-        f"Margin Call Amount = MTM - Collateral - Threshold (Only if > MTA).\n"
-        f"Provide explanation.\n\n"
-        f"Respond in JSON format with these keys:\n"
-        f"- 'Client'\n"
-        f"- 'Date'\n"
-        f"- 'MarginCallRequired'\n"
-        f"- 'MarginCallAmount'\n"
-        f"- 'ConfidenceScore' (between 0% and 100%)\n"
-        f"- 'Comments' (brief explanation)"
-    )
-
     retriever = vector_store.as_retriever(search_kwargs={"k": 10})
-
-    if debug:
-        docs = retriever.get_relevant_documents(question)
-        print("\n=== Retrieved Documents ===")
-        for i, doc in enumerate(docs):
-            print(f"\nDoc {i+1}:\n{doc.page_content}")
-
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
         retriever=retriever,
-        return_source_documents=False,
-        chain_type_kwargs={"prompt": prompt_template}
+        return_source_documents=False
     )
 
-    response = qa_chain.run(question)
+    today = datetime.today().strftime('%Y-%m-%d')
 
-    try:
-        return json.loads(response)
-    except json.JSONDecodeError:
-        return {"error": "Invalid JSON returned by LLM", "raw_output": response}
+    prompt = f"""
+The ML model predicts that a margin call **{'IS' if margin_call_required == 'Yes' else 'is NOT'}** required for client {client_name} today ({today}).
+Prediction Details:
+- MTM: {input_data['MTM']}
+- Collateral: {input_data['Collateral']}
+- Threshold: {input_data['Threshold']}
+- Volatility: {input_data['Volatility']}
+- InterestRate: {input_data['InterestRate']}
+- MTA: {input_data['MTA']}
+- Margin Call Required: {margin_call_required}
+- Margin Call Amount: {margin_call_amount}
+- Confidence Score: {confidence_score}
 
+Using historical margin call data, briefly explain the model's prediction in 2-3 lines.
+"""
 
-# ========== FORECASTING FOR NEXT 3 DAYS ==========
-def query_llm_forecast_from_history(client_name: str, debug=False):
+    explanation = qa_chain.run(prompt)
+
+    return {
+        "Client": client_name,
+        "Date": today,
+        "MarginCallRequired": margin_call_required,
+        "MarginCallAmount": margin_call_amount,
+        "ConfidenceScore": confidence_score,
+        "Comments": clean_comments(explanation)
+    }
+
+# ---------- Forecast for T+1, T+2, T+3 ----------
+def hybrid_forecast_from_history(client_name: str):
     vector_store = load_local_vectorstore()
+    retriever = vector_store.as_retriever(search_kwargs={"k": 20})
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        retriever=retriever,
+        return_source_documents=False
+    )
 
+    forecast_results = []
     today = datetime.today()
-    t_plus_1 = (today + timedelta(days=1)).strftime('%Y-%m-%d')
-    t_plus_2 = (today + timedelta(days=2)).strftime('%Y-%m-%d')
-    t_plus_3 = (today + timedelta(days=3)).strftime('%Y-%m-%d')
 
-    question = f"""
-Client: {client_name}
-Today's Date: {today.strftime('%Y-%m-%d')}
+    simulated_inputs = generate_dynamic_inputs(historical_df, n_days=3, client_name=client_name)
 
-Based on historical data, forecast margin calls for the next 3 days:
-- {t_plus_1}
-- {t_plus_2}
-- {t_plus_3}
+    for i, input_data in enumerate(simulated_inputs):
+        forecast_date = (today + timedelta(days=i+1)).strftime('%Y-%m-%d')
+        margin_call_required, margin_call_amount, confidence_score = hybrid_predict_margin_call(input_data)
 
-Instructions:
-1. For each date, determine if a margin call will be needed.
-2. Use: Margin Call Amount = MTM - Collateral - Threshold
-3. Only issue a margin call if the result > MTA.
-4. Estimate your confidence score (0%-100%) for each prediction.
-5. Provide an explanation.
+        prompt = f"""
+The ML model predicts that a margin call **{'IS' if margin_call_required == 'Yes' else 'is NOT'}** required for client {client_name} on {forecast_date}.
+Prediction Details:
+- MTM: {input_data['MTM']}
+- Collateral: {input_data['Collateral']}
+- Threshold: {input_data['Threshold']}
+- Volatility: {input_data['Volatility']}
+- InterestRate: {input_data['InterestRate']}
+- MTA: {input_data['MTA']}
+- Margin Call Required: {margin_call_required}
+- Margin Call Amount: {margin_call_amount}
+- Confidence Score: {confidence_score}
 
-Respond in JSON array format like:
-[
-  {{
-    "Client": "{client_name}",
-    "Date": "{t_plus_1}",
-    "MarginCallRequired": "Yes/No",
-    "MarginCallAmount": "$...",
-    "ConfidenceScore": "90%",
-    "Comments": "Brief explanation without using T+1 terminology."
-  }},
-  {{
-    "Client": "{client_name}",
-    "Date": "{t_plus_2}",
-    ...
-  }},
-  {{
-    "Client": "{client_name}",
-    "Date": "{t_plus_3}",
-    ...
-  }}
-]
-""".strip()
+Using historical margin call data, briefly explain the model's prediction in 2-3 lines.
+"""
 
-    retriever = vector_store.as_retriever(search_kwargs={"k": 20})
+        explanation = qa_chain.run(prompt)
 
-    if debug:
-        docs = retriever.get_relevant_documents(question)
-        print("\n=== Retrieved Documents ===")
-        for i, doc in enumerate(docs):
-            print(f"\nDoc {i+1}:\n{doc.page_content}")
+        forecast_results.append({
+            "Client": client_name,
+            "Date": forecast_date,
+            "MarginCallRequired": margin_call_required,
+            "MarginCallAmount": margin_call_amount,
+            "ConfidenceScore": confidence_score,
+            "Comments": clean_comments(explanation)
+        })
 
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        retriever=retriever,
-        return_source_documents=False,
-        chain_type_kwargs={"prompt": prompt_template}
-    )
+    return forecast_results
 
-    response = qa_chain.run(question)
-
-    try:
-        return json.loads(response)
-    except json.JSONDecodeError:
-        return {"error": "Invalid JSON returned by LLM", "raw_output": response}
-
-
-# ========== ASK ANYTHING ==========
-def query_llm_ask_anything(query: str, debug=False):
+# ---------- Ask Anything ----------
+def query_llm_ask_anything(query: str):
     vector_store = load_local_vectorstore()
-
     retriever = vector_store.as_retriever(search_kwargs={"k": 20})
-
-    if debug:
-        docs = retriever.get_relevant_documents(query)
-        print("\n=== Retrieved Documents ===")
-        for i, doc in enumerate(docs):
-            print(f"\nDoc {i+1}:\n{doc.page_content}")
-
-    plain_text_prompt = PromptTemplate(
-        input_variables=["context", "question"],
-        template="""
-Use the following historical context to answer the user's question in plain language.
-
-Context:
-{context}
-
-Question:
-{question}
-
-Answer:
-""".strip()
-    )
-
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
         retriever=retriever,
-        return_source_documents=False,
-        chain_type_kwargs={"prompt": plain_text_prompt}
+        return_source_documents=False
     )
-
     return qa_chain.run(query)
