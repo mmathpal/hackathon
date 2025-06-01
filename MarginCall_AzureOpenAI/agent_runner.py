@@ -77,6 +77,7 @@ def run_agent_for_client(client_name):
         api_version=os.getenv("AZURE_OPENAI_CHAT_API_VERSION"),
         api_key=os.getenv("AZURE_OPENAI_API_KEY"),
         temperature=0,
+        top_p=0
     )
 
     forecast_tool = Tool(
