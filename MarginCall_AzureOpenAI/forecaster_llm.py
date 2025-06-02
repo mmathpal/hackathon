@@ -19,7 +19,8 @@ llm = AzureChatOpenAI(
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_version=os.getenv("AZURE_OPENAI_CHAT_API_VERSION"),
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    temperature=0
+    temperature=0, # Zero temp for more consistent answers
+    top_p=0
 )
 
 # Embedding model
