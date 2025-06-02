@@ -24,8 +24,9 @@ def call_forecast_api(client_name):
         raise Exception(f"API call failed with status {response.status_code}: {response.text}")
 
 # ---- Email Utility ----
-def send_email_with_attachment(receiver_email, subject, body_text, json_file_path, text_file_path):
+def send_email_with_attachment(subject, body_text):
     sender_email = os.getenv("GMAIL_EMAIL")
+    receiver_email = os.getenv("TO_EMAIL")
     sender_password = os.getenv("GMAIL_APP_PASSWORD")
     smtp_server = os.getenv("SMTP_SERVER")
     smtp_port = int(os.getenv("SMTP_PORT"))
@@ -43,31 +44,18 @@ def send_email_with_attachment(receiver_email, subject, body_text, json_file_pat
         <body>
             <h2>📊 Margin Call Forecast Summary</h2>
             <p>{body_text_html}</p>
-            <p>Attached are the detailed <b>JSON</b> and <b>Text</b> reports.</p>
-            <p>Regards,<br>Margin Call Forecasting Agent 🤖</p>
+            <p>Regards,<br>Margin Call Agent</p>
         </body>
     </html>
     """
     msg.attach(MIMEText(html_body, "html"))
-
-    # Attach JSON file
-    with open(json_file_path, "r") as f:
-        mime_json = MIMEText(f.read(), "json")
-        mime_json.add_header("Content-Disposition", "attachment", filename=os.path.basename(json_file_path))
-        msg.attach(mime_json)
-
-    # Attach Text file
-    with open(text_file_path, "r") as f:
-        mime_text = MIMEText(f.read(), "plain")
-        mime_text.add_header("Content-Disposition", "attachment", filename=os.path.basename(text_file_path))
-        msg.attach(mime_text)
 
     # ✅ Use SMTP_SSL
     with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
         server.login(sender_email, sender_password)
         server.send_message(msg)
 
-    print("✅ Email sent successfully via Gmail SSL!")
+    print("✅ Email sent successfully via Gmail!")
 
 # ---- Agent Task ----
 def run_agent_for_client(client_name):
@@ -82,7 +70,7 @@ def run_agent_for_client(client_name):
     forecast_tool = Tool(
         name="Forecast Tool",
         func=lambda client_name: call_forecast_api(client_name),
-        description="Calls the forecast API to get 3-day margin call forecast for a client."
+        description="Calls the forecast API to get 3-day margin call forecast along with the confidence score for a client."
     )
 
     tools = [forecast_tool]
@@ -96,7 +84,7 @@ def run_agent_for_client(client_name):
 
     # Task Prompt
     task_prompt = (
-        f"I need to use the Forecast Tool to get the 3-day margin call forecast for '{client_name}'."
+        f"I need to use the Forecast Tool to get the 3-day margin call forecast along with the confidence score for '{client_name}'."
     )
 
     return agent.run(task_prompt)
@@ -112,23 +100,15 @@ if __name__ == "__main__":
     # Run agent
     summary = run_agent_for_client(client)
 
-    # Save JSON and Text Report
-    json_data_path = os.path.join(reports_dir, f"{client}_forecast.json")
+    # Save Text Report
     text_file_path = os.path.join(reports_dir, f"{client}_forecast.txt")
-
-    # Save forecast API data
-    forecast_data = call_forecast_api(client)
-    with open(json_data_path, "w") as f:
-        json.dump(forecast_data, f, indent=4)
-
-    # Save text summary
+    
     with open(text_file_path, "w") as f:
         f.write(summary)
 
     print("✅ Files created in reports/ folder.")
 
     # Send Email
-    receiver_email = input("Enter Receiver Email: ")
     subject = f"📧 Margin Call Forecast Report for {client}"
 
-    send_email_with_attachment(receiver_email, subject, summary, json_data_path, text_file_path)
+    send_email_with_attachment(subject, summary)

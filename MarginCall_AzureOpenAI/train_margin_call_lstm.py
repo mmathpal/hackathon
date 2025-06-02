@@ -15,7 +15,7 @@ df = pd.read_csv("MarginCallData.csv")
 client_encoder = LabelEncoder()
 df["Client_Encoded"] = client_encoder.fit_transform(df["Client"])
 
-# 3. Features and Target (NOTE: Client_Encoded included now)
+# 3. Features and Target
 features = ["Client_Encoded", "MTM", "Collateral", "Threshold", "Volatility", "InterestRate", "MTA"]
 target = "MarginCallMade"
 
@@ -30,7 +30,7 @@ scaler = MinMaxScaler()
 X_scaled = scaler.fit_transform(X)
 
 # 6. Prepare for LSTM (batch_size, seq_len, input_size)
-X_scaled = np.expand_dims(X_scaled, axis=1)  # (samples, seq_len=1, input_size)
+X_scaled = np.expand_dims(X_scaled, axis=1)
 
 # 7. Split into train and test
 split = int(0.8 * len(X))
@@ -60,7 +60,7 @@ class LSTMModel(nn.Module):
         out = self.fc(lstm_out[:, -1, :])
         return self.sigmoid(out)
 
-model = LSTMModel(input_size=len(features))  # input_size now 7 (with Client_Encoded)
+model = LSTMModel(input_size=len(features))
 
 # 10. Loss and Optimizer
 criterion = nn.BCELoss()

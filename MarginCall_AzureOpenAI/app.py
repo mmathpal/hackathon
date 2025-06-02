@@ -33,7 +33,7 @@ with st.sidebar:
     st.markdown(
         """
         <div style='color: gray; text-align: center; font-size: 14px;'>
-        ⚡ Powered by: <b>Agentic AI<b> | <b>LLM</b> | <b>RAG</b> | <b>LSTM</b> | <b>LightGBM</b> | <b>Azure OpenAI</b>
+        ⚡ Powered by: <b>Agentic AI<b> | <b>ML</b> | <b>LLM</b> | <b>RAG</b> | <b>Azure OpenAI</b>
         </div>
         """, unsafe_allow_html=True
     )
@@ -73,7 +73,7 @@ if view_option == "📈 Forecast":
                     mime="text/csv"
                 )
 
-            # Display table with better centered header styling
+            # Display table with centered header styling
             st.markdown(
                 """
                 <style>

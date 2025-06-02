@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
-from forecaster_llm import (
+from forecaster import (
     hybrid_what_if_one_day,
     hybrid_forecast_from_history,
     query_llm_ask_anything

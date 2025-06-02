@@ -13,7 +13,7 @@ from torch import nn
 
 load_dotenv()
 
-# Initialize LLM (Azure OpenAI GPT-3.5 Turbo)
+# Initialize LLM
 llm = AzureChatOpenAI(
     azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
@@ -106,7 +106,10 @@ def hybrid_predict_margin_call(input_data):
     avg_prob = (prob_lgbm + prob_lstm) / 2
     margin_call_required = "Yes" if avg_prob > 0.5 else "No"
     confidence_score = round(avg_prob * 100, 2)
-    margin_call_amount = max(round(input_data["MTM"] - input_data["Collateral"] - input_data["Threshold"], 2), 0)
+    if margin_call_required == "Yes":
+        margin_call_amount = max(round(input_data["MTM"] - input_data["Collateral"] - input_data["Threshold"], 2), 0)
+    else:
+        margin_call_amount = 0
 
     return margin_call_required, f"${margin_call_amount:,.2f}", f"{confidence_score:.2f}%"
 
@@ -118,21 +121,13 @@ def generate_dynamic_inputs(historical_df, n_days=3, client_name=None):
     if client_name:
         np.random.seed(abs(hash(client_name)) % (2**32))
 
-    stats = {}
-    for feature in ["MTM", "Collateral", "Threshold", "Volatility", "InterestRate", "MTA"]:
-        stats[feature] = {
-            "mean": historical_df[feature].mean(),
-            "std": historical_df[feature].std()
-        }
-
     inputs = []
     for _ in range(n_days):
         sample = {}
         for feature in ["MTM", "Collateral", "Threshold", "Volatility", "InterestRate", "MTA"]:
-            sampled_value = np.random.normal(
-                loc=stats[feature]["mean"],
-                scale=stats[feature]["std"]
-            )
+            min_val = historical_df[feature].min()
+            max_val = historical_df[feature].max()
+            sampled_value = np.random.uniform(min_val, max_val)
             if feature in ["MTM", "Collateral", "Threshold"]:
                 sampled_value = round(sampled_value)
             else:
