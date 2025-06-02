@@ -1,15 +1,12 @@
 import streamlit as st
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
+import plotly.graph_objects as go
 
 # FastAPI endpoint base URL
 API_BASE_URL = "http://localhost:8000"
-
-# Generate next 5 dates for fallback or display
-def get_future_dates(n=5):
-    return [(datetime.today() + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(1, n+1)]
 
 # Helper function to handle API errors
 def handle_api_response(response, error_message="Failed to fetch data"):
@@ -25,238 +22,232 @@ st.title("📊 Margin Call Forecaster")
 
 # Sidebar for client and view selection
 with st.sidebar:
-    clients = ['Client A', 'Client B', 'Client C']
+    clients = ['ClientA', 'ClientB', 'ClientC', 'ClientD', 'ClientE', 'ClientF']
     selected_client = st.selectbox("Select Client", clients)
-    view_option = st.radio("Select View", ["Forecast", "What-If Scenario", "Ask Anything"])
+    view_option = st.radio(
+        "Select View",
+        ["📈 Forecast", "🔧 What-If Scenario", "❓ Ask Anything"]
+    )
+    
+    st.markdown("""---""")
+    st.markdown(
+        """
+        <div style='color: gray; text-align: center; font-size: 14px;'>
+        ⚡ Powered by: <b>Agentic AI<b> | <b>ML</b> | <b>LLM</b> | <b>RAG</b> | <b>Azure OpenAI</b>
+        </div>
+        """, unsafe_allow_html=True
+    )
 
 # Forecast View
-if view_option == "Forecast":
-    st.subheader(f"📋 LLM-Based Forecast for {selected_client} (T+1 to T+3)")
-    
-    # Call FastAPI /forecast endpoint
+if view_option == "📈 Forecast":
+    st.subheader(f"📋 Forecast for {selected_client} (T+1 to T+3)")
 
-    headers = {
-        "Content-Type": "application/json"
-        #"Authorization": "Bearer YOUR_API_KEY"  # If required
-    }
-    data = {
-        "Client": selected_client,
-    }
+    headers = {"Content-Type": "application/json"}
+    data = {"Client": selected_client}
 
-    response = requests.post(f"{API_BASE_URL}/forecast", json=data, headers=headers)
-    # st.write(response.status_code, response.json())
-    result = handle_api_response(response, "Failed to fetch forecast")
-        
+    with st.spinner("🔄 Thinking... Generating Forecast..."):
+        response = requests.post(f"{API_BASE_URL}/forecast", json=data, headers=headers)
+        result = handle_api_response(response, "Failed to fetch forecast")
+
     if result:
-        #st.write("### Raw Forecast Response")  # Debugging
-        #st.write(result) ## comment later
-
-        data = response.json()
-        #first_item = data["response"][0]  # Ensure the index refers to the correct element
-        #string_value = first_item.get("Comments", "")  # Access the field containing a string
-
         try:
-            df = pd.DataFrame(data["response"])
-            df = df[["Date", "MarginCallRequired", "MarginCallAmount","Comments"]]
-            # Rename columns
+            df = pd.DataFrame(result)
+            df = df[["Date", "MarginCallRequired", "MarginCallAmount", "ConfidenceScore", "Comments"]]
+
             df = df.rename(columns={
                 "Date": "Margin Call Date",
                 "MarginCallRequired": "Margin Call Required?",
-                "MarginCallAmount": "Margin Call Amount (USD)"
+                "MarginCallAmount": "Margin Call Amount (USD)",
+                "ConfidenceScore": "Confidence Score (%)",
+                "Comments": "Explanation"
             })
-            #st.dataframe(df, use_container_width=True, hide_index=True)
-            #st.dataframe(df.style.set_properties(**{'text-align': 'left', 'word-wrap': 'break-word'}), hide_index=True)
-            
-            st.markdown("""
-                <style>
-                    table {
-                        border-collapse: collapse;
-                        width: 100%;
-                    }
-                    th {
-                        background-color: #4CAF50;
-                        color: white;
-                        font-weight: bold;
-                        padding: 8px;
-                    }
-                    td {
-                        padding: 8px;
-                        text-align: left;
-                    }
-                    tr:nth-child(even) {background-color: #f2f2f2;}
-                </style>
-            """, unsafe_allow_html=True)
-            st.markdown(df.to_html(index=False), unsafe_allow_html=True)
-                
-            # Download button
+
+            # Download button on top-right
             csv = df.to_csv(index=False)
-            st.download_button(
-                label="Download Forecast Data as CSV",
-                data=csv,
-                file_name="forecast_margin_calls.csv",
-                mime="text/csv"
-            )
-            
-            # Chart.js visualization
-            st.write("### Forecast Chart")
-            chart_data = {
-                "type": "line",
-                "data": {
-                    "labels": df["Margin Call Date"].tolist(),
-                    "datasets": [{
-                        "label": "Forecasted Margin Call (USD)",
-                        "data": df["Margin Call Amount (USD)"].tolist(),
-                        "borderColor": "#3498db",
-                        "backgroundColor": "rgba(52, 152, 219, 0.2)",
-                        "fill": True,
-                        "tension": 0.4
-                    }]
-                },
-                "options": {
-                    "scales": {
-                        "x": {"title": {"display": True, "text": "Date"}},
-                        "y": {"title": {"display": True, "text": "Margin Call Amount (USD)"}, "beginAtZero": False}
-                    },
-                    "plugins": {
-                        "title": {"display": True, "text": f"Margin Call Forecast for {selected_client} (T+1 to T+3)"}
-                    }
+            download_col, _ = st.columns([0.8, 0.2])
+            with download_col:
+                st.download_button(
+                    label="⬇️ Download Forecast Data",
+                    data=csv,
+                    file_name="forecast_margin_calls.csv",
+                    mime="text/csv"
+                )
+
+            # Display table with centered header styling
+            st.markdown(
+                """
+                <style>
+                table {
+                    width: 100%;
+                    table-layout: fixed;
+                    border-collapse: collapse;
                 }
-            }
-            st.components.v1.html(f"""
-                <canvas id="forecastChart"></canvas>
-                <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-                <script>
-                    new Chart(document.getElementById('forecastChart'), {json.dumps(chart_data)});
-                </script>
-            """, height=400)
-            
+                thead tr th {
+                    background-color: #0D6EFD;
+                    color: white;
+                    text-align: center !important; /* Force center header */
+                    padding: 12px 8px;
+                    font-size: 16px;
+                    border: 1px solid #ddd;
+                    vertical-align: middle;
+                }
+                tbody tr td {
+                    text-align: left !important; /* Left align data */
+                    padding: 10px 8px;
+                    white-space: normal !important;
+                    word-wrap: break-word !important;
+                    border: 1px solid #ddd;
+                    font-size: 14px;
+                    vertical-align: top;
+                }
+                /* Specific Column Widths */
+                th:nth-child(1), td:nth-child(1) { width: 120px; }   /* Date */
+                th:nth-child(2), td:nth-child(2) { width: 160px; }   /* Margin Call Required */
+                th:nth-child(3), td:nth-child(3) { width: 150px; }   /* Margin Call Amount */
+                th:nth-child(4), td:nth-child(4) { width: 120px; }   /* Confidence Score */
+                th:nth-child(5), td:nth-child(5) { width: 600px; }   /* Explanation - wider */
+                
+                tr:hover {
+                    background-color: #f1f1f1;
+                }
+                </style>
+                """, unsafe_allow_html=True
+            )
+
+            # Render the table
+            st.markdown(df.to_html(index=False, escape=False), unsafe_allow_html=True)
+
+            # Combined Line Chart
+            fig = go.Figure()
+
+            fig.add_trace(go.Scatter(
+                x=pd.to_datetime(df["Margin Call Date"]).dt.strftime('%Y-%m-%d'),
+                y=df["Margin Call Amount (USD)"],
+                mode="lines+markers",
+                name="Margin Call Amount (USD)",
+                line=dict(color='royalblue', width=3),
+                marker=dict(size=8)
+            ))
+
+            fig.add_trace(go.Scatter(
+                x=pd.to_datetime(df["Margin Call Date"]).dt.strftime('%Y-%m-%d'),
+                y=df["Confidence Score (%)"].str.rstrip('%').astype(float),
+                mode="lines+markers",
+                name="Confidence Score (%)",
+                line=dict(color='seagreen', width=3, dash='dot'),
+                marker=dict(size=8),
+                yaxis="y2"
+            ))
+
+            fig.update_layout(
+                title=f"📈 Forecast for {selected_client}",
+                xaxis=dict(
+                    title="Date",
+                    tickformat="%Y-%m-%d",
+                    tickmode='linear'
+                ),
+                yaxis=dict(title="Margin Call Amount (USD)", side="left", rangemode="tozero"),
+                yaxis2=dict(title="Confidence Score (%)", overlaying="y", side="right", rangemode="tozero"),
+                template="plotly_white",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
         except Exception as e:
             st.error(f"Error parsing forecast response: {str(e)}")
-            st.write("Please check the LLM response format.")
+            st.write("⚠️ Please check the LLM response format.")
 
 # What-If Scenario View
-elif view_option == "What-If Scenario":
+elif view_option == "🔧 What-If Scenario":
     left_col, right_col = st.columns([1, 2])
-    
+
     with left_col:
         st.subheader("🔧 Adjust Parameters")
-        volatility = st.slider("Market Volatility (VIX)", 0, 50, 10)
-        #fx_rate = st.slider("FX Rate (e.g., EUR/USD)", 0.9, 1.5, 1.1)
-        interest_rate = st.slider("Interest Rate (%)", 0.0, 10.0, 3.0, step=0.1)
-        threshold = st.slider("Threshold (USD)", 0, 2_000_000, 700000, step=50_000)
-        collateral = st.slider("Collateral Posted (USD)", 0, 5_000_000, 900000, step=100_000)
-        mtm = st.slider("MTM (USD)", 0, 5_000_000, 100000, step=100_000)
-        mta = st.slider("MTA (USD)", 0, 50_000_000, 300000, step=100_000)
-    
+        mtm = st.slider("MTM (USD)", min_value=0, max_value=3_0_000_00, value=400000, step=10_000)
+        collateral = st.slider("Collateral (USD)", min_value=0, max_value=5_000_00, value=100000, step=10_000)
+        threshold = st.slider("Threshold (USD)", min_value=0, max_value=4_00_000, value=30000, step=10_000)        
+        volatility = st.slider("Market Volatility (VIX)", 0, 50, 20)
+        interest_rate = st.slider("Interest Rate (%)", 0.0, 10.0, 2.5, step=0.1)
+
     with right_col:
-        st.subheader("📋 What-If Scenario: LLM-Based Analysis")
+        st.subheader(f"📋 What-If Scenario: LLM-Based Analysis for {selected_client}")
         input_data = {
             "Client": selected_client,
             "MTM": mtm,
             "Collateral": collateral,
             "Threshold": threshold,
             "Volatility": volatility,
-            "FX_Rate": 0,
-            "Interest_Rate": interest_rate,
-            "MTA": mta, 
+            "InterestRate": interest_rate,
+            "MTA": 1000,
             "Currency": "USD"
         }
-        
-        headers = {
-        "Content-Type": "application/json"
-        #"Authorization": "Bearer YOUR_API_KEY"  # If required
-        }
 
-        # Call FastAPI /what-if endpoint
-        response = requests.post(f"{API_BASE_URL}/what-if", json=input_data,headers=headers)
-        result = handle_api_response(response, "Failed to fetch what-if analysis")
-        
+        headers = {"Content-Type": "application/json"}
+
+        with st.spinner("🔄 Thinking... Performing What-If Analysis..."):
+            response = requests.post(f"{API_BASE_URL}/what-if", json=input_data, headers=headers)
+            result = handle_api_response(response, "Failed to fetch what-if analysis")
+
         if result:
-            #st.write("### Raw What-If Response")  # Debugging
-            #data = response.json()
-            #st.write(data)
             try:
-                marginCallAmount = result.get("MarginCallAmount", "")  
-                # Convert JSON to DataFrame
-                df = pd.DataFrame([result])  # Wrap in a list to avoid scalar errors
-                df = df[["Date", "MarginCallRequired", "MarginCallAmount", "Comments"]]
-                # # Rename columns
-                # df = df.rename(columns={
-                #     "Date": "Margin Call Date",
-                #     "MarginCallRequired": "Margin Call Required?",
-                #     "MarginCallAmount": "Margin Call Amount (USD)",
-                #     "Comments":"Explanation"
-                # })
-                # # Use st.table for better word wrapping on text fields
-                # st.table(df.style.set_properties(**{'text-align': 'left', 'word-wrap': 'break-word'}))
-                
-                # st.markdown(f"""
-                # 📅 **Date:** {result["Date"]}  
-                # ✅ **Margin Call Required?** {result["MarginCallRequired"]}  
-                # 💰 **Margin Call Amount (USD):** {result["MarginCallAmount"]}  
-                # 📝 **Details:** {result["Comments"]}
-                # """)
-                
-                #Expandable Sections
-                with st.expander("Margin Call Details", True):
+                margin_call_amount = float(str(result.get("MarginCallAmount", 0)).replace(",", "").replace("$", "").replace("%", ""))
+                confidence_score = float(str(result.get("ConfidenceScore", "0%")).rstrip('%'))
+
+                df = pd.DataFrame([result])
+                df = df[["Date", "MarginCallRequired", "MarginCallAmount", "ConfidenceScore", "Comments"]]
+
+                with st.expander("📋 Margin Call Details", expanded=True):
                     st.write(f"📅 **Date:** {result['Date']}")
-                    st.write(f"✅ **Margin Call Required?** {result['MarginCallRequired']}")
+                    margin_call_icon = "✅" if result['MarginCallRequired'].lower() == "yes" else "❌"
+                    st.write(f"{margin_call_icon} **Margin Call Required?** {result['MarginCallRequired']}")
                     st.write(f"💰 **Margin Call Amount (USD):** {result['MarginCallAmount']}")
+                    st.write(f"📈 **Confidence Score:** {result['ConfidenceScore']}")
                     st.write(f"📝 **Details:** {result['Comments']}")
 
-                # Download button
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    label="Download What-If Data as CSV",
-                    data=csv,
-                    file_name="what_if_margin_calls.csv",
-                    mime="text/csv"
+                # Combined Line Chart for What-If
+                fig = go.Figure()
+
+                fig.add_trace(go.Scatter(
+                    x=["Scenario"],
+                    y=[margin_call_amount],
+                    mode="lines+markers",
+                    name="Margin Call Amount (USD)",
+                    line=dict(color='indianred', width=3),
+                    marker=dict(size=8)
+                ))
+
+                fig.add_trace(go.Scatter(
+                    x=["Scenario"],
+                    y=[confidence_score],
+                    mode="lines+markers",
+                    name="Confidence Score (%)",
+                    line=dict(color='seagreen', width=3, dash='dot'),
+                    marker=dict(size=8),
+                    yaxis="y2"
+                ))
+
+                fig.update_layout(
+                    title=f"📈 What-If Analysis for {selected_client}",
+                    xaxis=dict(title=""),
+                    yaxis=dict(title="Margin Call Amount (USD)", side="left", rangemode="tozero"),
+                    yaxis2=dict(title="Confidence Score (%)", overlaying="y", side="right", rangemode="tozero"),
+                    template="plotly_white",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                 )
-                
-                # Chart.js visualization (single point)
-                st.write("### What-If Chart")
-                chart_data = {
-                    "type": "bar",
-                    "data": {
-                        "labels": [datetime.today().strftime('%Y-%m-%d')],
-                        "datasets": [{
-                            "label": "What-If Margin Call (USD)",
-                            "data": [marginCallAmount],
-                            "backgroundColor": "rgba(231, 76, 60, 0.5)",
-                            "borderColor": "#e74c3c",
-                            "borderWidth": 1
-                        }]
-                    },
-                    "options": {
-                        "scales": {
-                            "x": {"title": {"display": True, "text": "Date"}},
-                            "y": {"title": {"display": True, "text": "Margin Call Amount (USD)"}, "beginAtZero": False}
-                        },
-                        "plugins": {
-                            "title": {"display": True, "text": f"What-If Margin Call for {selected_client}"}
-                        }
-                    }
-                }
-                st.components.v1.html(f"""
-                    <canvas id="whatIfChart"></canvas>
-                    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-                    <script>
-                        new Chart(document.getElementById('whatIfChart'), {json.dumps(chart_data)});
-                    </script>
-                """, height=400)
-                
+                st.plotly_chart(fig, use_container_width=True)
+
             except Exception as e:
                 st.error(f"Error parsing what-if response: {str(e)}")
-                st.write("Please check the LLM response format.")
+                st.write("⚠️ Please check the LLM response format.")
 
 # Ask Anything View
 else:
     st.subheader("❓ Ask Anything About Margin Calls")
     query = st.text_input("Enter your question:", placeholder="e.g., What factors influence margin calls?")
     if query:
-        # Call FastAPI /ask endpoint
-        response = requests.post(f"{API_BASE_URL}/ask", json={"query": query})
-        result = handle_api_response(response, "Failed to fetch response")
+        with st.spinner("🔄 Thinking... Fetching response..."):
+            response = requests.post(f"{API_BASE_URL}/ask", json={"query": query})
+            result = handle_api_response(response, "Failed to fetch response")
         if result:
-            st.write("### Response")
-            st.write(result)
+            st.write("### 🧠 LLM Response")
+            st.success(result)
