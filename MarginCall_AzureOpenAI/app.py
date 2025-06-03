@@ -205,35 +205,76 @@ elif view_option == "🔧 What-If Scenario":
                     st.write(f"📝 **Details:** {result['Comments']}")
 
                 # Combined Line Chart for What-If
+                # fig = go.Figure()
+                
+                # # Margin Call Amount (USD) Line
+                # fig.add_trace(go.Scatter(
+                #     x=["Scenario"],
+                #     y=[margin_call_amount],
+                #     mode="lines+markers",
+                #     name="Margin Call Amount (USD)",
+                #     line=dict(color='tomato', width=6, dash="solid"),
+                #     marker=dict(size=14, color="red", symbol="circle-open"),
+                #     hoverinfo="text",
+                #     text=[f"Margin Call Amount: ${margin_call_amount}"]
+                # ))
+
+                # # Confidence Score (%) Line
+                # fig.add_trace(go.Scatter(
+                #     x=["Scenario"],
+                #     y=[confidence_score],
+                #     mode="lines+markers",
+                #     name="Confidence Score (%)",
+                #     line=dict(color='royalblue', width=6, dash="dot"),
+                #     marker=dict(size=14, color="blue", symbol="square-open"),
+                #     yaxis="y2",
+                #     hoverinfo="text",
+                #     text=[f"Confidence Score: {confidence_score}%"]
+                # ))
+
+                # fig.update_layout(
+                #     title=f"📈 What-If Analysis for {selected_client}",
+                #     xaxis=dict(title="", showgrid=True, tickangle=45),
+                #     yaxis=dict(title="Margin Call Amount (USD)", side="left", rangemode="tozero"),
+                #     yaxis2=dict(title="Confidence Score (%)", overlaying="y", side="right", rangemode="tozero"),
+                #     template="ggplot2",
+                #     font=dict(family="Arial, sans-serif", size=14),
+                #     plot_bgcolor="#f5f5f5",
+                #     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                # )
+                # st.plotly_chart(fig, use_container_width=True)
+
                 fig = go.Figure()
 
-                fig.add_trace(go.Scatter(
+                # Margin Call Amount Bar
+                fig.add_trace(go.Bar(
                     x=["Scenario"],
                     y=[margin_call_amount],
-                    mode="lines+markers",
                     name="Margin Call Amount (USD)",
-                    line=dict(color='indianred', width=3),
-                    marker=dict(size=8)
+                    marker_color="indianred",
+                    text=[f"${margin_call_amount}"],
+                    textposition="outside"
                 ))
 
-                fig.add_trace(go.Scatter(
+                # Confidence Score Bar
+                fig.add_trace(go.Bar(
                     x=["Scenario"],
                     y=[confidence_score],
-                    mode="lines+markers",
                     name="Confidence Score (%)",
-                    line=dict(color='seagreen', width=3, dash='dot'),
-                    marker=dict(size=8),
-                    yaxis="y2"
+                    marker_color="royalblue",
+                    text=[f"{confidence_score}%"],
+                    textposition="outside"
                 ))
 
                 fig.update_layout(
-                    title=f"📈 What-If Analysis for {selected_client}",
-                    xaxis=dict(title=""),
-                    yaxis=dict(title="Margin Call Amount (USD)", side="left", rangemode="tozero"),
-                    yaxis2=dict(title="Confidence Score (%)", overlaying="y", side="right", rangemode="tozero"),
-                    template="plotly_white",
+                    title=f"📊 Margin Call & Confidence Score for {selected_client}",
+                    xaxis=dict(title="Scenario"),
+                    yaxis=dict(title="Margin Call Amount", rangemode="tozero"),
+                    template="seaborn",
+                    barmode="group",  # Grouped bars for comparison
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                 )
+
                 st.plotly_chart(fig, use_container_width=True)
 
             except Exception as e:
