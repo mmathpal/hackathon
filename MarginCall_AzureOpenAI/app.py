@@ -17,7 +17,11 @@ def handle_api_response(response, error_message="Failed to fetch data"):
         return None
 
 # Streamlit setup
-st.set_page_config(layout="wide")
+st.set_page_config(
+    layout="wide",
+    page_title=" Margin Call Forecaster",
+    page_icon="📈"  # You can use an emoji or an image URL
+    )
 st.title("📊 Margin Call Forecaster")
 
 # Sidebar for client and view selection
