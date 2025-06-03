@@ -17,7 +17,11 @@ def handle_api_response(response, error_message="Failed to fetch data"):
         return None
 
 # Streamlit setup
-st.set_page_config(layout="wide")
+st.set_page_config(
+    layout="wide",
+    page_title=" Margin Call Forecaster",
+    page_icon="📈"  # You can use an emoji or an image URL
+    )
 st.title("📊 Margin Call Forecaster")
 
 # Sidebar for client and view selection
@@ -205,35 +209,76 @@ elif view_option == "🔧 What-If Scenario":
                     st.write(f"📝 **Details:** {result['Comments']}")
 
                 # Combined Line Chart for What-If
+                # fig = go.Figure()
+                
+                # # Margin Call Amount (USD) Line
+                # fig.add_trace(go.Scatter(
+                #     x=["Scenario"],
+                #     y=[margin_call_amount],
+                #     mode="lines+markers",
+                #     name="Margin Call Amount (USD)",
+                #     line=dict(color='tomato', width=6, dash="solid"),
+                #     marker=dict(size=14, color="red", symbol="circle-open"),
+                #     hoverinfo="text",
+                #     text=[f"Margin Call Amount: ${margin_call_amount}"]
+                # ))
+
+                # # Confidence Score (%) Line
+                # fig.add_trace(go.Scatter(
+                #     x=["Scenario"],
+                #     y=[confidence_score],
+                #     mode="lines+markers",
+                #     name="Confidence Score (%)",
+                #     line=dict(color='royalblue', width=6, dash="dot"),
+                #     marker=dict(size=14, color="blue", symbol="square-open"),
+                #     yaxis="y2",
+                #     hoverinfo="text",
+                #     text=[f"Confidence Score: {confidence_score}%"]
+                # ))
+
+                # fig.update_layout(
+                #     title=f"📈 What-If Analysis for {selected_client}",
+                #     xaxis=dict(title="", showgrid=True, tickangle=45),
+                #     yaxis=dict(title="Margin Call Amount (USD)", side="left", rangemode="tozero"),
+                #     yaxis2=dict(title="Confidence Score (%)", overlaying="y", side="right", rangemode="tozero"),
+                #     template="ggplot2",
+                #     font=dict(family="Arial, sans-serif", size=14),
+                #     plot_bgcolor="#f5f5f5",
+                #     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                # )
+                # st.plotly_chart(fig, use_container_width=True)
+
                 fig = go.Figure()
 
-                fig.add_trace(go.Scatter(
+                # Margin Call Amount Bar
+                fig.add_trace(go.Bar(
                     x=["Scenario"],
                     y=[margin_call_amount],
-                    mode="lines+markers",
                     name="Margin Call Amount (USD)",
-                    line=dict(color='indianred', width=3),
-                    marker=dict(size=8)
+                    marker_color="indianred",
+                    text=[f"${margin_call_amount}"],
+                    textposition="outside"
                 ))
 
-                fig.add_trace(go.Scatter(
+                # Confidence Score Bar
+                fig.add_trace(go.Bar(
                     x=["Scenario"],
                     y=[confidence_score],
-                    mode="lines+markers",
                     name="Confidence Score (%)",
-                    line=dict(color='seagreen', width=3, dash='dot'),
-                    marker=dict(size=8),
-                    yaxis="y2"
+                    marker_color="royalblue",
+                    text=[f"{confidence_score}%"],
+                    textposition="outside"
                 ))
 
                 fig.update_layout(
-                    title=f"📈 What-If Analysis for {selected_client}",
-                    xaxis=dict(title=""),
-                    yaxis=dict(title="Margin Call Amount (USD)", side="left", rangemode="tozero"),
-                    yaxis2=dict(title="Confidence Score (%)", overlaying="y", side="right", rangemode="tozero"),
-                    template="plotly_white",
+                    title=f"📊 Margin Call & Confidence Score for {selected_client}",
+                    xaxis=dict(title="Scenario"),
+                    yaxis=dict(title="Margin Call Amount", rangemode="tozero"),
+                    template="seaborn",
+                    barmode="group",  # Grouped bars for comparison
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                 )
+
                 st.plotly_chart(fig, use_container_width=True)
 
             except Exception as e:
@@ -242,12 +287,74 @@ elif view_option == "🔧 What-If Scenario":
 
 # Ask Anything View
 else:
-    st.subheader("❓ Ask Anything About Margin Calls")
+    st.subheader("❓Ask me about Margin Calls")
+
+    # Initialize session state for chat history
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
     query = st.text_input("Enter your question:", placeholder="e.g., What factors influence margin calls?")
     if query:
+        st.session_state.messages.append({"role": "User", "message": query})
+
         with st.spinner("🔄 Thinking... Fetching response..."):
             response = requests.post(f"{API_BASE_URL}/ask", json={"query": query})
             result = handle_api_response(response, "Failed to fetch response")
-        if result:
-            st.write("### 🧠 LLM Response")
-            st.success(result)
+            st.session_state.messages.append({"role": "Bot", "message": result})
+        
+        st.session_state.query = ""
+
+    st.markdown("""
+        <style>
+            .chat-container {
+                width: 100%;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+            }
+            .message-wrapper {
+                display: flex;
+                margin-bottom: 12px;
+                align-items: center;
+            }
+            .bot-wrapper {
+                justify-content: flex-start;
+            }
+            .user-wrapper {
+                justify-content: flex-end;
+            }
+            .message-card {
+                padding: 10px 18px;
+                border-radius: 20px;
+                font-size: 16px;
+                max-width: 70%;
+                box-shadow: 2px 4px 10px rgba(0,0,0,0.1);
+                word-wrap: break-word;
+            }
+            .user-message {
+                background: linear-gradient(45deg, #4CAF50, #43A047);
+                color: white;
+            }
+            .bot-message {
+                background: linear-gradient(45deg, #E3F2FD, #BBDEFB);
+                color: black;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+    
+    for msg in st.session_state.messages:
+        role_class = "user-wrapper" if msg["role"] == "User" else "bot-wrapper"
+        message_class = "user-message" if msg["role"] == "User" else "bot-message"
+        icon = "👤" if msg["role"] == "User" else "🤖"
+        
+        st.markdown(f'''
+        <div class="message-wrapper {role_class}">
+            <strong>{icon} {msg["role"]} </strong> 
+            <div class="message-card {message_class}">
+                {msg["message"]}
+            </div>
+        </div>
+        ''', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
