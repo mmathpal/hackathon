@@ -242,12 +242,74 @@ elif view_option == "🔧 What-If Scenario":
 
 # Ask Anything View
 else:
-    st.subheader("❓ Ask Anything About Margin Calls")
+    st.subheader("❓Ask me about Margin Calls")
+
+    # Initialize session state for chat history
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
     query = st.text_input("Enter your question:", placeholder="e.g., What factors influence margin calls?")
     if query:
+        st.session_state.messages.append({"role": "User", "message": query})
+
         with st.spinner("🔄 Thinking... Fetching response..."):
             response = requests.post(f"{API_BASE_URL}/ask", json={"query": query})
             result = handle_api_response(response, "Failed to fetch response")
-        if result:
-            st.write("### 🧠 LLM Response")
-            st.success(result)
+            st.session_state.messages.append({"role": "Bot", "message": result})
+        
+        st.session_state.query = ""
+
+    st.markdown("""
+        <style>
+            .chat-container {
+                width: 100%;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+            }
+            .message-wrapper {
+                display: flex;
+                margin-bottom: 12px;
+                align-items: center;
+            }
+            .bot-wrapper {
+                justify-content: flex-start;
+            }
+            .user-wrapper {
+                justify-content: flex-end;
+            }
+            .message-card {
+                padding: 10px 18px;
+                border-radius: 20px;
+                font-size: 16px;
+                max-width: 70%;
+                box-shadow: 2px 4px 10px rgba(0,0,0,0.1);
+                word-wrap: break-word;
+            }
+            .user-message {
+                background: linear-gradient(45deg, #4CAF50, #43A047);
+                color: white;
+            }
+            .bot-message {
+                background: linear-gradient(45deg, #E3F2FD, #BBDEFB);
+                color: black;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+    
+    for msg in st.session_state.messages:
+        role_class = "user-wrapper" if msg["role"] == "User" else "bot-wrapper"
+        message_class = "user-message" if msg["role"] == "User" else "bot-message"
+        icon = "👤" if msg["role"] == "User" else "🤖"
+        
+        st.markdown(f'''
+        <div class="message-wrapper {role_class}">
+            <strong>{icon} {msg["role"]} </strong> 
+            <div class="message-card {message_class}">
+                {msg["message"]}
+            </div>
+        </div>
+        ''', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
