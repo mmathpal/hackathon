@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 import pandas as pd
 import plotly.graph_objects as go
+import streamlit.components.v1 as components
 
 # FastAPI endpoint base URL
 API_BASE_URL = "http://localhost:8000"
@@ -174,7 +175,7 @@ elif view_option == "🔧 What-If Scenario":
         interest_rate = st.slider("Interest Rate (%)", 0.0, 10.0, 2.5, step=0.1)
 
     with right_col:
-        st.subheader(f"📋 What-If Scenario: LLM-Based Analysis for {selected_client}")
+        st.subheader(f"📋 What-If Scenario: AI-Based Analysis for {selected_client}")
         input_data = {
             "Client": selected_client,
             "MTM": mtm,
@@ -285,37 +286,54 @@ elif view_option == "🔧 What-If Scenario":
                 st.error(f"Error parsing what-if response: {str(e)}")
                 st.write("⚠️ Please check the LLM response format.")
 
-# Ask Anything View
-else:
+# ---------- Ask Anything View ----------
+elif view_option == "❓ Ask Anything":
+    # ---------- Ask Anything View ----------
     st.subheader("❓Ask me about Margin Calls")
 
     # Initialize session state for chat history
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    query = st.text_input("Enter your question:", placeholder="e.g., What factors influence margin calls?")
-    if query:
-        st.session_state.messages.append({"role": "User", "message": query})
+    # Reset Chat History button
+    if st.button("🗑️ Reset Chat History"):
+        st.session_state.messages = []
 
-        with st.spinner("🔄 Thinking... Fetching response..."):
-            response = requests.post(f"{API_BASE_URL}/ask", json={"query": query})
-            result = handle_api_response(response, "Failed to fetch response")
-            st.session_state.messages.append({"role": "Bot", "message": result})
-        
-        st.session_state.query = ""
+    # Function to handle submission
+    def submit_query():
+        query = st.session_state.query_input
+        if query:
+            st.session_state.messages.append({"role": "User", "message": query})
 
-    st.markdown("""
+            with st.spinner("🔄 Thinking... Fetching response..."):
+                response = requests.post(f"{API_BASE_URL}/ask", json={"query": query})
+                result = handle_api_response(response, "Failed to fetch response")
+                st.session_state.messages.append({"role": "Bot", "message": result})
+
+            # Clear the input
+            st.session_state.query_input = ""
+
+    # Text input with `on_change`
+    st.text_input("Enter your question:", placeholder="e.g., What factors influence margin calls?", key="query_input", on_change=submit_query)
+
+    # Styling for fixed chat container
+    chat_html = """
         <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
             .chat-container {
-                width: 100%;
+                height: calc(100vh - 100px);
                 overflow-y: auto;
-                display: flex;
-                flex-direction: column;
+                border: 1px solid #ccc;
+                padding: 10px;
+                border-radius: 10px;
+                background-color: #f9f9f9;
+                font-family: 'Inter', sans-serif;
             }
             .message-wrapper {
                 display: flex;
                 margin-bottom: 12px;
-                align-items: center;
+                align-items: flex-start;
             }
             .bot-wrapper {
                 justify-content: flex-start;
@@ -324,37 +342,51 @@ else:
                 justify-content: flex-end;
             }
             .message-card {
-                padding: 10px 18px;
-                border-radius: 20px;
-                font-size: 16px;
-                max-width: 70%;
-                box-shadow: 2px 4px 10px rgba(0,0,0,0.1);
-                word-wrap: break-word;
+                padding: 12px 20px;
+                border-radius: 18px;
+                font-size: 15px;
+                max-width: 65%;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                word-break: break-word;
+                line-height: 1.5;
             }
             .user-message {
-                background: linear-gradient(45deg, #4CAF50, #43A047);
+                background: linear-gradient(135deg, #4CAF50, #388E3C);
                 color: white;
             }
             .bot-message {
-                background: linear-gradient(45deg, #E3F2FD, #BBDEFB);
-                color: black;
+                background: linear-gradient(135deg, #E3F2FD, #90CAF9);
+                color: #212121;
             }
         </style>
-    """, unsafe_allow_html=True)
+        <div class="chat-container" id="chat-container">
+    """
 
-    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-    
+    # Add messages dynamically
     for msg in st.session_state.messages:
         role_class = "user-wrapper" if msg["role"] == "User" else "bot-wrapper"
         message_class = "user-message" if msg["role"] == "User" else "bot-message"
         icon = "👤" if msg["role"] == "User" else "🤖"
         
-        st.markdown(f'''
+        chat_html += f'''
         <div class="message-wrapper {role_class}">
-            <strong>{icon} {msg["role"]} </strong> 
             <div class="message-card {message_class}">
+                <strong>{icon} {msg["role"]}</strong><br/>
                 {msg["message"]}
             </div>
         </div>
-        ''', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+        '''
+
+    # Close chat container
+    chat_html += """
+        </div>
+        <script>
+            var container = window.parent.document.querySelector('iframe').contentDocument.getElementById('chat-container');
+            if (container) {
+                container.scrollTop = container.scrollHeight;
+            }
+        </script>
+    """
+
+    # Render the HTML using components.html
+    components.html(chat_html, height=600, scrolling=False)
